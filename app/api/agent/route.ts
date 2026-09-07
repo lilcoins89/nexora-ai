@@ -1,9 +1,12 @@
+import { headers } from 'next/headers'
 import { z } from 'zod'
 import { detectStackFromPrompt, stackByModeLabel } from '@/lib/stacks'
 import { LIMITS, validateFiles } from '@/lib/workspace'
 import { validateWithRunner } from '@/lib/runner'
 import { isGroqConfigured, runLangChainAgent } from '@/lib/langchain-agent'
 import { createRun, updateRun } from '@/lib/runs'
+import { auth } from '@/lib/auth'
+import { saveRun } from '@/lib/neon-persistence'
 
 const fileInput = z.object({
   files: z.record(z.string(), z.string()).default({}),
@@ -32,7 +35,9 @@ export async function POST(request: Request) {
   const events: string[] = []
   const files = { ...parsed.data.files }
   const runId = crypto.randomUUID()
-  createRun({ id: runId, prompt, mode })
+  const session = await auth.api.getSession({ headers: await headers() }).catch(() => null)
+  const run = createRun({ id: runId, prompt, mode })
+  if (session?.user) await saveRun(run, session.user.id)
 
   if (!isGroqConfigured()) {
     const error = 'Groq is not configured. Add GROQ_API_KEY to the server environment.'
@@ -50,7 +55,8 @@ export async function POST(request: Request) {
     })
     const validation = await validateWithRunner({ runId, mode, prompt, files: result.files })
     events.push(validation.configured ? `Validation ${validation.status}` : 'Validation skipped: no runner configured')
-    updateRun(runId, { status: validation.ok ? 'completed' : 'failed', events: [...events], error: validation.ok ? undefined : validation.summary })
+    const updatedRun = updateRun(runId, { status: validation.ok ? 'completed' : 'failed', events: [...events], error: validation.ok ? undefined : validation.summary })
+    if (session?.user && updatedRun) await saveRun(updatedRun, session.user.id, { files: result.files, validation })
 
     return Response.json({
       configured: true,
