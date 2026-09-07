@@ -18,6 +18,7 @@ import {
   Sparkles,
   TerminalSquare,
   Upload,
+  Globe,
   X,
 } from 'lucide-react'
 import {
@@ -45,6 +46,7 @@ export default function Page() {
   const [studioOpen, setStudioOpen] = useState(false)
   const [activeMode, setActiveMode] = useState(modes[0].title)
   const [githubConnected, setGithubConnected] = useState(false)
+  const [netlifyConfigured, setNetlifyConfigured] = useState(false)
   const [workspace, setWorkspace] = useState(() => createWorkspace())
   const [busy, setBusy] = useState(false)
 
@@ -54,6 +56,13 @@ export default function Page() {
       const parsed = parseWorkspace(saved)
       if (parsed) setWorkspace(parsed)
     }
+  }, [])
+
+  useEffect(() => {
+    fetch('/api/netlify')
+      .then((r) => r.json())
+      .then((data) => setNetlifyConfigured(Boolean(data.configured)))
+      .catch(() => setNetlifyConfigured(false))
   }, [])
 
   useEffect(() => {
@@ -112,7 +121,7 @@ export default function Page() {
               ? {
                   ...item,
                   title: 'Workspace updated',
-                  detail: result.events?.join(' · ') || 'Agent completed the requested slice',
+                  detail: result.events?.join(' \u00b7 ') || 'Agent completed the requested slice',
                   state: 'done',
                 }
               : item,
@@ -202,6 +211,7 @@ export default function Page() {
           onClose={() => setStudioOpen(false)}
           githubConnected={githubConnected}
           onGithub={connectGithub}
+          netlifyConfigured={netlifyConfigured}
         />
       )}
     </main>
@@ -290,7 +300,7 @@ function Landing({
         </button>
       </div>
       <p className="mt-8 pb-8 text-center font-mono text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
-        LangChain-compatible · provider agnostic · built for the edge
+        LangChain-compatible \u00b7 Netlify-ready \u00b7 built for the edge
       </p>
     </div>
   )
@@ -306,6 +316,7 @@ function Studio({
   onClose,
   githubConnected,
   onGithub,
+  netlifyConfigured,
 }: {
   activeMode: string
   setActiveMode: (value: string) => void
@@ -318,9 +329,11 @@ function Studio({
   onClose: () => void
   githubConnected: boolean
   onGithub: () => void
+  netlifyConfigured: boolean
 }) {
   const [panel, setPanel] = useState<Panel>('chat')
   const [message, setMessage] = useState('')
+  const [deploying, setDeploying] = useState(false)
   const selectedFile = useMemo(() => workspace.files[0]?.path ?? 'app/page.tsx', [workspace.files])
 
   function submit() {
@@ -364,6 +377,67 @@ function Studio({
         },
       ],
     }))
+  }
+
+  async function deployToNetlify() {
+    if (deploying) return
+    const name = window.prompt('Netlify site name', `nexora-${Date.now().toString(36)}`)
+    if (!name) return
+    setDeploying(true)
+    try {
+      const response = await fetch('/api/netlify', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          action: 'deploy',
+          name,
+          files: Object.fromEntries(workspace.files.map((file) => [file.path, file.content ?? ''])),
+        }),
+      })
+      const result = await response.json()
+      if (result.siteUrl || result.deployUrl) {
+        window.open(result.siteUrl || result.deployUrl, '_blank', 'noopener,noreferrer')
+      }
+      setWorkspace((current) => ({
+        ...current,
+        messages: [
+          ...current.messages,
+          {
+            id: makeId(),
+            role: 'agent',
+            text: result.ok
+              ? `Deployed ${result.files} files to Netlify (${result.team}). Live: ${result.siteUrl || result.deployUrl}`
+              : result.error ?? 'Netlify deploy failed.',
+          },
+        ],
+        activity: current.activity.map((item) =>
+          item.id === 'direction'
+            ? {
+                ...item,
+                title: result.ok ? 'Netlify deploy ready' : 'Netlify deploy paused',
+                detail: result.ok
+                  ? result.siteUrl || result.deployUrl || 'Site created'
+                  : result.extensionsUrl || 'Check NETLIFY_AUTH_TOKEN',
+                state: result.ok ? 'done' : 'waiting',
+              }
+            : item,
+        ),
+      }))
+    } catch {
+      setWorkspace((current) => ({
+        ...current,
+        messages: [
+          ...current.messages,
+          {
+            id: makeId(),
+            role: 'agent',
+            text: 'Netlify deploy failed. Set NETLIFY_AUTH_TOKEN for team agricoin8-debug.',
+          },
+        ],
+      }))
+    } finally {
+      setDeploying(false)
+    }
   }
 
   return (
@@ -439,6 +513,18 @@ function Studio({
               <GitBranch className="size-4" />
               {githubConnected ? 'GitHub connected' : 'Connect GitHub'}
             </button>
+            <button
+              onClick={deployToNetlify}
+              disabled={deploying}
+              className="flex w-full items-center gap-3 rounded-xl border border-border px-3 py-3 text-sm hover:bg-secondary disabled:opacity-50"
+            >
+              <Globe className="size-4" />
+              {deploying
+                ? 'Deploying\u2026'
+                : netlifyConfigured
+                  ? 'Deploy to Netlify'
+                  : 'Configure Netlify'}
+            </button>
           </div>
         </aside>
         <section
@@ -477,7 +563,7 @@ function Studio({
               <div>
                 <p className="text-sm font-medium">Nexora agent</p>
                 <p className="text-xs text-muted-foreground">
-                  {busy ? 'Planning, writing, testing…' : 'Planning, writing, testing'}
+                  {busy ? 'Planning, writing, testing\u2026' : 'Planning, writing, testing'}
                 </p>
               </div>
               <Check className="ml-auto size-4 text-emerald-400" />
@@ -514,7 +600,7 @@ function Studio({
                   }
                 }}
                 rows={2}
-                placeholder="Describe what you want to build…"
+                placeholder="Describe what you want to build\u2026"
                 disabled={busy}
                 className="min-h-14 w-full resize-none bg-transparent px-3 py-2 text-base outline-none placeholder:text-muted-foreground disabled:opacity-60"
               />
@@ -548,18 +634,43 @@ function Studio({
               <Activity key={item.id} item={item} />
             ))}
           </div>
-          <div className="mt-10 rounded-2xl border border-border bg-card p-4">
-            <p className="text-sm font-medium">Bring your repo</p>
-            <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              Connect GitHub to import context or export this build into a new public repository.
-            </p>
-            <button
-              onClick={onGithub}
-              className="mt-4 flex w-full items-center justify-center rounded-xl bg-foreground py-3 text-sm text-background"
-            >
-              <Upload className="mr-2 size-4" />
-              {githubConnected ? 'Repository ready' : 'Connect GitHub'}
-            </button>
+          <div className="mt-10 space-y-4">
+            <div className="rounded-2xl border border-border bg-card p-4">
+              <p className="text-sm font-medium">Bring your repo</p>
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                Connect GitHub to import context or export this build into a new public repository.
+              </p>
+              <button
+                onClick={onGithub}
+                className="mt-4 flex w-full items-center justify-center rounded-xl bg-foreground py-3 text-sm text-background"
+              >
+                <Upload className="mr-2 size-4" />
+                {githubConnected ? 'Repository ready' : 'Connect GitHub'}
+              </button>
+            </div>
+            <div className="rounded-2xl border border-border bg-card p-4">
+              <p className="text-sm font-medium">Ship on Netlify</p>
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                Deploy this workspace to team <span className="font-mono text-xs">agricoin8-debug</span>. Manage
+                extensions in the Netlify dashboard.
+              </p>
+              <button
+                onClick={deployToNetlify}
+                disabled={deploying}
+                className="mt-4 flex w-full items-center justify-center rounded-xl border border-border py-3 text-sm hover:bg-secondary disabled:opacity-50"
+              >
+                <Globe className="mr-2 size-4" />
+                {deploying ? 'Deploying\u2026' : netlifyConfigured ? 'Deploy to Netlify' : 'Set NETLIFY_AUTH_TOKEN'}
+              </button>
+              <a
+                href="https://app.netlify.com/teams/agricoin8-debug/extensions"
+                target="_blank"
+                rel="noreferrer"
+                className="mt-3 block text-center text-xs text-muted-foreground underline"
+              >
+                Open team extensions
+              </a>
+            </div>
           </div>
         </aside>
       </div>
