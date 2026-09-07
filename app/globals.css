@@ -1,0 +1,48 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+@import 'shadcn/tailwind.css';
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --radius-lg: 1.75rem;
+  --radius-xl: 2rem;
+}
+
+:root {
+  color-scheme: dark;
+  --background: oklch(0.115 0.008 285);
+  --foreground: oklch(0.96 0.012 285);
+  --card: oklch(0.145 0.01 285);
+  --card-foreground: oklch(0.96 0.012 285);
+  --secondary: oklch(0.19 0.012 285);
+  --secondary-foreground: oklch(0.96 0.012 285);
+  --muted-foreground: oklch(0.67 0.014 285);
+  --border: oklch(1 0 0 / 9%);
+  --input: oklch(1 0 0 / 12%);
+  --primary: oklch(0.96 0.012 285);
+  --primary-foreground: oklch(0.115 0.008 285);
+  --ring: oklch(0.75 0.02 285);
+}
+
+* { @apply border-border outline-ring/40; }
+html { background: var(--background); }
+body { @apply bg-background text-foreground; font-family: Arial, Helvetica, sans-serif; }
+.font-serif { font-family: Georgia, 'Times New Roman', serif; }
+.font-mono { font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace; }
+button, a { -webkit-tap-highlight-color: transparent; }
+.touch-target { min-height: 44px; min-width: 44px; }
+textarea, input { font-size: 16px; }
+::selection { background: oklch(0.96 0.012 285); color: oklch(0.115 0.008 285); }
