@@ -1,6 +1,8 @@
 import { gateway, stepCountIs, ToolLoopAgent, tool } from 'ai'
 import { z } from 'zod'
 import { detectStackFromPrompt, stackByModeLabel, STACKS } from '@/lib/stacks'
+import { LIMITS, validateFiles } from '@/lib/workspace'
+import { validateWithRunner } from '@/lib/runner'
 
 const model = gateway('openai/gpt-5.3-codex')
 
@@ -21,8 +23,9 @@ You can build and edit projects in these stacks:
 ${STACK_CATALOG}
 
 Rules:
-- Work in small verified increments.
+- Work in small verified increments using inspect → plan → edit → validate → summarize.
 - Inspect the workspace with list_files / read_file before changing it.
+- After edits, prefer a validation pass and repair clear failures before summarizing.
 - Use write_file for complete file contents; use propose_patch for focused diffs when a full rewrite is risky.
 - Never claim a real GitHub push, Netlify deploy, or production release happened unless the user tools did it outside this loop.
 - Prefer accessible UI, mobile-first layouts, secure server boundaries, and production-ready defaults.
@@ -104,11 +107,14 @@ export async function POST(request: Request) {
   if (!prompt) {
     return Response.json({ error: 'A prompt is required.' }, { status: 400 })
   }
-  if (prompt.length > 8000) {
-    return Response.json({ error: 'Prompt is too long. Keep requests under 8,000 characters.' }, { status: 400 })
+  if (prompt.length > LIMITS.prompt) {
+    return Response.json({ error: `Prompt is too long. Keep requests under ${LIMITS.prompt} characters.` }, { status: 400 })
   }
   if (!parsed.success) {
     return Response.json({ error: 'Workspace files are invalid.' }, { status: 400 })
+  }
+  try { validateFiles(parsed.data.files) } catch (error) {
+    return Response.json({ error: error instanceof Error ? error.message : 'Workspace files are invalid.' }, { status: 400 })
   }
 
   const stack = stackByModeLabel(mode) || detectStackFromPrompt(prompt)
@@ -125,13 +131,19 @@ export async function POST(request: Request) {
       prompt: `Build request (mode: ${mode}${stack ? `, stack: ${stack.id}` : ''}): ${prompt}`,
     })
 
+    const runId = crypto.randomUUID()
+    const validation = await validateWithRunner({ runId, mode, prompt, files })
+    events.push(validation.configured ? `Validation ${validation.status}` : 'Validation skipped: no runner configured')
+
     return Response.json({
       configured: true,
+      runId,
       message: result.text,
       files,
       events,
       steps: result.steps.length,
       stack: stack?.id ?? null,
+      validation,
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'The autonomous agent could not complete this run.'

@@ -35,6 +35,8 @@
   --primary: oklch(0.96 0.012 285);
   --primary-foreground: oklch(0.115 0.008 285);
   --ring: oklch(0.75 0.02 285);
+  --accent: oklch(0.78 0.18 145);
+  --accent-muted: oklch(0.22 0.04 145);
 }
 
 * { @apply border-border outline-ring/40; }

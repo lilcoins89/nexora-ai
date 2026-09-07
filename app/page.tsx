@@ -30,7 +30,7 @@ import {
   makeId,
   Message,
   parseWorkspace,
-  WorkspaceFile,
+  WorkspaceState,
   workspaceStorageKey,
 } from '@/lib/workspace'
 import { type StackId } from '@/lib/stacks'
@@ -120,6 +120,8 @@ export default function Page() {
             { id: makeId(), role: 'agent', text: result.message ?? 'The agent completed a run.' },
           ],
           files: nextFiles,
+          validation: result.validation ?? null,
+          runs: result.runId ? [...current.runs, { id: result.runId, prompt, startedAt: new Date().toISOString(), finishedAt: new Date().toISOString(), status: result.validation?.ok === false ? 'failed' : 'completed', changedFiles: nextFiles.filter((file) => file.status === 'changed').map((file) => file.path), validation: result.validation }] : current.runs,
           activity: current.activity.map((item) =>
             item.id === 'direction'
               ? {
@@ -339,10 +341,8 @@ function Studio({
 }: {
   activeMode: string
   setActiveMode: (value: string) => void
-  workspace: { messages: Message[]; files: WorkspaceFile[]; activity: ActivityItem[] }
-  setWorkspace: React.Dispatch<
-    React.SetStateAction<{ messages: Message[]; files: WorkspaceFile[]; activity: ActivityItem[] }>
-  >
+  workspace: WorkspaceState
+  setWorkspace: React.Dispatch<React.SetStateAction<WorkspaceState>>
   onSend: (text: string) => void
   busy: boolean
   onClose: () => void
@@ -353,7 +353,8 @@ function Studio({
   const [panel, setPanel] = useState<Panel>('chat')
   const [message, setMessage] = useState('')
   const [deploying, setDeploying] = useState(false)
-  const selectedFile = useMemo(() => workspace.files[0]?.path ?? 'app/page.tsx', [workspace.files])
+  const selectedFile = workspace.project.selectedFile ?? workspace.files[0]?.path ?? 'app/page.tsx'
+  const selectedWorkspaceFile = useMemo(() => workspace.files.find((file) => file.path === selectedFile) ?? workspace.files[0], [workspace.files, selectedFile])
 
   function submit() {
     if (busy) return
@@ -502,6 +503,7 @@ function Studio({
             {workspace.files.map((file) => (
               <button
                 key={file.path}
+                onClick={() => setWorkspace((current) => ({ ...current, project: { ...current.project, selectedFile: file.path } }))}
                 className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm ${
                   file.path === selectedFile
                     ? 'bg-secondary text-foreground'
@@ -513,6 +515,20 @@ function Studio({
               </button>
             ))}
           </div>
+          {selectedWorkspaceFile ? (
+            <div className="mt-5 flex min-h-48 flex-col rounded-2xl border border-border bg-card p-3">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <span className="truncate font-mono text-[10px] uppercase tracking-widest text-muted-foreground">{selectedWorkspaceFile.path}</span>
+                <span className="text-[10px] text-muted-foreground">editable</span>
+              </div>
+              <textarea
+                value={selectedWorkspaceFile.content ?? ''}
+                onChange={(event) => setWorkspace((current) => ({ ...current, files: current.files.map((file) => file.path === selectedWorkspaceFile.path ? { ...file, content: event.target.value, status: 'changed' } : file) }))}
+                className="min-h-40 flex-1 resize-none bg-transparent font-mono text-xs leading-5 text-foreground outline-none"
+                aria-label={`Edit ${selectedWorkspaceFile.path}`}
+              />
+            </div>
+          ) : null}
           <div className="mt-8 space-y-2 border-t border-border pt-5">
             <button onClick={exportProject} className="flex w-full items-center gap-3 rounded-xl border border-border px-3 py-3 text-sm hover:bg-secondary">
               <Download className="size-4" />
