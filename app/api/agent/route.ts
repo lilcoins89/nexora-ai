@@ -1,5 +1,6 @@
 import { gateway, stepCountIs, ToolLoopAgent, tool } from 'ai'
 import { z } from 'zod'
+import { detectStackFromPrompt, stackByModeLabel, STACKS } from '@/lib/stacks'
 
 const model = gateway('openai/gpt-5.3-codex')
 
@@ -7,11 +8,31 @@ const fileInput = z.object({
   files: z.record(z.string(), z.string()).default({}),
 })
 
-function createAgent(files: Record<string, string>, events: string[]) {
+const STACK_CATALOG = STACKS.map(
+  (s) => `- ${s.title} (${s.id}): ${s.detail}. Prefer paths/extensions: ${s.extensions.join(', ')}`,
+).join('\n')
+
+function createAgent(files: Record<string, string>, events: string[], stackGuidance: string) {
   return new ToolLoopAgent({
     model,
-    instructions: `You are Nexora, an autonomous coding agent inside a safe virtual workspace. Work in small verified increments. Inspect the workspace before changing it. Use write_file when you have a complete file, then summarize what changed. Never claim a real GitHub push or deployment happened. Existing workspace files are provided through tools. Prefer TypeScript, accessible UI, mobile-first layouts, and secure server-side boundaries.`,
-    stopWhen: stepCountIs(8),
+    instructions: `You are Nexora, an autonomous coding agent inside a safe virtual workspace.
+
+You can build and edit projects in these stacks:
+${STACK_CATALOG}
+
+Rules:
+- Work in small verified increments.
+- Inspect the workspace with list_files / read_file before changing it.
+- Use write_file for complete file contents; use propose_patch for focused diffs when a full rewrite is risky.
+- Never claim a real GitHub push, Netlify deploy, or production release happened unless the user tools did it outside this loop.
+- Prefer accessible UI, mobile-first layouts, secure server boundaries, and production-ready defaults.
+- Match the requested stack's conventions (file layout, config files, package manager metadata).
+- When scaffolding a new stack, write the essential config files (package.json, tsconfig, pyproject, vite.config, etc.).
+- Supported languages and frameworks: TypeScript, Python, React, Next.js (App Router), Vite, Vue 3.
+
+Current stack guidance:
+${stackGuidance}`,
+    stopWhen: stepCountIs(10),
     tools: {
       list_files: tool({
         description: 'List every file currently available in the virtual workspace.',
@@ -30,7 +51,8 @@ function createAgent(files: Record<string, string>, events: string[]) {
         },
       }),
       write_file: tool({
-        description: 'Write a complete file into the virtual workspace. Use only safe relative paths.',
+        description:
+          'Write a complete file into the virtual workspace. Safe relative paths only. Use for .ts, .tsx, .py, .vue, .css, configs, etc.',
         inputSchema: z.object({ path: z.string(), content: z.string().max(120000) }),
         execute: async ({ path, content }) => {
           if (path.startsWith('/') || path.includes('..')) {
@@ -49,6 +71,26 @@ function createAgent(files: Record<string, string>, events: string[]) {
           return { ok: true, path, summary, diff }
         },
       }),
+      scaffold_stack: tool({
+        description:
+          'Seed standard starter files for a stack: typescript | python | react | nextjs | vite | vue. Overwrites only missing files unless force is true.',
+        inputSchema: z.object({
+          stack: z.enum(['typescript', 'python', 'react', 'nextjs', 'vite', 'vue']),
+          force: z.boolean().optional(),
+        }),
+        execute: async ({ stack, force }) => {
+          const meta = STACKS.find((s) => s.id === stack)
+          if (!meta) return { ok: false, error: 'Unknown stack' }
+          const written: string[] = []
+          for (const [path, content] of Object.entries(meta.seed)) {
+            if (!force && files[path]) continue
+            files[path] = content
+            written.push(path)
+          }
+          events.push(`Scaffolded ${stack}: ${written.join(', ') || 'no new files'}`)
+          return { ok: true, stack, written }
+        },
+      }),
     },
   })
 }
@@ -56,7 +98,7 @@ function createAgent(files: Record<string, string>, events: string[]) {
 export async function POST(request: Request) {
   const body = await request.json().catch(() => null)
   const prompt = typeof body?.prompt === 'string' ? body.prompt.trim() : ''
-  const mode = typeof body?.mode === 'string' ? body.mode : 'Apps & websites'
+  const mode = typeof body?.mode === 'string' ? body.mode : 'Next.js'
   const parsed = fileInput.safeParse({ files: body?.files ?? {} })
 
   if (!prompt) {
@@ -69,13 +111,18 @@ export async function POST(request: Request) {
     return Response.json({ error: 'Workspace files are invalid.' }, { status: 400 })
   }
 
+  const stack = stackByModeLabel(mode) || detectStackFromPrompt(prompt)
+  const stackGuidance = stack
+    ? `${stack.title}: ${stack.guidance}`
+    : 'No single stack forced. Infer the best stack from the user request among TypeScript, Python, React, Next.js, Vite, and Vue.'
+
   const events: string[] = []
   const files = { ...parsed.data.files }
 
   try {
-    const agent = createAgent(files, events)
+    const agent = createAgent(files, events, stackGuidance)
     const result = await agent.generate({
-      prompt: `Build request (${mode}): ${prompt}`,
+      prompt: `Build request (mode: ${mode}${stack ? `, stack: ${stack.id}` : ''}): ${prompt}`,
     })
 
     return Response.json({
@@ -84,6 +131,7 @@ export async function POST(request: Request) {
       files,
       events,
       steps: result.steps.length,
+      stack: stack?.id ?? null,
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'The autonomous agent could not complete this run.'
