@@ -1,8 +1,9 @@
+import { drizzle } from 'drizzle-orm/node-postgres'
 import { Pool } from 'pg'
+import * as schema from './schema'
 
 const connectionString = process.env.DATABASE_URL
 
-/** Postgres pool when DATABASE_URL is set; otherwise null so local/demo deploys do not crash. */
 export const pool = connectionString
   ? new Pool({
       connectionString,
@@ -10,4 +11,6 @@ export const pool = connectionString
       idleTimeoutMillis: 10_000,
       connectionTimeoutMillis: 5_000,
     })
-  : (null as unknown as Pool)
+  : null
+
+export const db = pool ? drizzle(pool, { schema }) : null
