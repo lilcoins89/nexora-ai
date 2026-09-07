@@ -26,25 +26,29 @@ import {
   createWorkspace,
   downloadText,
   exportWorkspace,
+  filesForStack,
   makeId,
   Message,
   parseWorkspace,
   WorkspaceFile,
   workspaceStorageKey,
 } from '@/lib/workspace'
+import { type StackId } from '@/lib/stacks'
 
 const modes = [
-  { title: 'Apps & websites', detail: 'Full products from a brief', icon: Layers3 },
-  { title: 'APIs & backends', detail: 'Routes, schemas, contracts', icon: TerminalSquare },
-  { title: 'Prompts & agents', detail: 'LangChain-style loops', icon: Bot },
-  { title: 'Architecture', detail: 'Systems you can implement', icon: GitBranch },
+  { title: 'TypeScript', detail: 'Libraries, CLIs, types, Node services', icon: TerminalSquare, stackId: 'typescript' as StackId },
+  { title: 'Python', detail: 'Scripts, APIs, data tools, packages', icon: Code2, stackId: 'python' as StackId },
+  { title: 'React', detail: 'Components, hooks, client UIs', icon: Layers3, stackId: 'react' as StackId },
+  { title: 'Next.js', detail: 'App Router, server components, APIs', icon: Sparkles, stackId: 'nextjs' as StackId },
+  { title: 'Vite', detail: 'Fast SPA tooling with Vite + TS', icon: GitBranch, stackId: 'vite' as StackId },
+  { title: 'Vue', detail: 'SFCs, Composition API, Vite + Vue', icon: Bot, stackId: 'vue' as StackId },
 ]
 
 type Panel = 'chat' | 'files' | 'activity' | 'more'
 
 export default function Page() {
   const [studioOpen, setStudioOpen] = useState(false)
-  const [activeMode, setActiveMode] = useState(modes[0].title)
+  const [activeMode, setActiveMode] = useState(modes[3].title)
   const [githubConnected, setGithubConnected] = useState(false)
   const [netlifyConfigured, setNetlifyConfigured] = useState(false)
   const [workspace, setWorkspace] = useState(() => createWorkspace())
@@ -105,7 +109,7 @@ export default function Page() {
               existing.content = content
               existing.status = 'changed'
             } else {
-              nextFiles.push({ path, kind: 'ts', status: 'changed', content })
+              nextFiles.push({ path, kind: path.split('.').pop() || 'file', status: 'changed', content })
             }
           }
         }
@@ -121,7 +125,7 @@ export default function Page() {
               ? {
                   ...item,
                   title: 'Workspace updated',
-                  detail: result.events?.join(' \u00b7 ') || 'Agent completed the requested slice',
+                  detail: result.events?.join(' · ') || 'Agent completed the requested slice',
                   state: 'done',
                 }
               : item,
@@ -197,6 +201,21 @@ export default function Page() {
           githubConnected={githubConnected}
           onMode={(mode) => {
             setActiveMode(mode)
+            const stack = modes.find((m) => m.title === mode)
+            if (stack?.stackId) {
+              setWorkspace((current) => ({
+                ...current,
+                files: filesForStack(stack.stackId),
+                messages: [
+                  ...current.messages,
+                  {
+                    id: makeId(),
+                    role: 'agent',
+                    text: `Switched workspace to ${mode}. Seed files are ready — describe what to build.`,
+                  },
+                ],
+              }))
+            }
             setStudioOpen(true)
           }}
         />
@@ -261,8 +280,8 @@ function Landing({
           <span className="text-muted-foreground">Ship from your pocket.</span>
         </h1>
         <p className="mt-10 max-w-xl text-pretty text-lg leading-8 text-muted-foreground sm:text-xl">
-          An autonomous coding agent for apps, websites, APIs, prompts, and architectures. Import
-          GitHub. Export when it&apos;s ready.
+          Build TypeScript, Python, React, Next.js, Vite, and Vue — from chat. Import GitHub, deploy to
+          Netlify, export when ready.
         </p>
       </section>
       <section className="space-y-3" aria-label="Build modes">
@@ -300,7 +319,7 @@ function Landing({
         </button>
       </div>
       <p className="mt-8 pb-8 text-center font-mono text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
-        LangChain-compatible \u00b7 Netlify-ready \u00b7 built for the edge
+        TS · Python · React · Next.js · Vite · Vue
       </p>
     </div>
   )
@@ -468,22 +487,18 @@ function Studio({
           className={`${panel === 'files' ? 'flex' : 'hidden'} w-full shrink-0 flex-col border-b border-border p-4 lg:flex lg:w-64 lg:border-b-0 lg:border-r`}
         >
           <div className="mb-7 flex items-center justify-between">
-            <span className="font-mono text-xs uppercase tracking-widest text-muted-foreground">
-              Workspace
-            </span>
+            <span className="font-mono text-xs uppercase tracking-widest text-muted-foreground">Workspace</span>
             <button className="rounded-lg p-2 hover:bg-secondary" aria-label="Workspace settings">
               <Settings2 size={16} />
             </button>
           </div>
           <button className="mb-5 flex w-full items-center gap-3 rounded-xl bg-secondary p-3 text-left text-sm">
             <FolderGit2 className="size-4 text-muted-foreground" />
-            <span className="truncate">nexora-starter</span>
+            <span className="truncate">{activeMode}</span>
             <MoreHorizontal className="ml-auto size-4 text-muted-foreground" />
           </button>
-          <p className="mb-3 px-1 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-            Files
-          </p>
-          <div className="space-y-1">
+          <p className="mb-3 px-1 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">Files</p>
+          <div className="max-h-64 space-y-1 overflow-y-auto">
             {workspace.files.map((file) => (
               <button
                 key={file.path}
@@ -493,51 +508,51 @@ function Studio({
                     : 'text-muted-foreground hover:bg-secondary'
                 }`}
               >
-                <Code2 className="size-4" />
-                {file.path}
+                <Code2 className="size-4 shrink-0" />
+                <span className="truncate">{file.path}</span>
               </button>
             ))}
           </div>
           <div className="mt-8 space-y-2 border-t border-border pt-5">
-            <button
-              onClick={exportProject}
-              className="flex w-full items-center gap-3 rounded-xl border border-border px-3 py-3 text-sm hover:bg-secondary"
-            >
+            <button onClick={exportProject} className="flex w-full items-center gap-3 rounded-xl border border-border px-3 py-3 text-sm hover:bg-secondary">
               <Download className="size-4" />
               Download workspace
             </button>
-            <button
-              onClick={onGithub}
-              className="flex w-full items-center gap-3 rounded-xl border border-border px-3 py-3 text-sm hover:bg-secondary"
-            >
+            <button onClick={onGithub} className="flex w-full items-center gap-3 rounded-xl border border-border px-3 py-3 text-sm hover:bg-secondary">
               <GitBranch className="size-4" />
               {githubConnected ? 'GitHub connected' : 'Connect GitHub'}
             </button>
-            <button
-              onClick={deployToNetlify}
-              disabled={deploying}
-              className="flex w-full items-center gap-3 rounded-xl border border-border px-3 py-3 text-sm hover:bg-secondary disabled:opacity-50"
-            >
+            <button onClick={deployToNetlify} disabled={deploying} className="flex w-full items-center gap-3 rounded-xl border border-border px-3 py-3 text-sm hover:bg-secondary disabled:opacity-50">
               <Globe className="size-4" />
-              {deploying
-                ? 'Deploying\u2026'
-                : netlifyConfigured
-                  ? 'Deploy to Netlify'
-                  : 'Configure Netlify'}
+              {deploying ? 'Deploying…' : netlifyConfigured ? 'Deploy to Netlify' : 'Configure Netlify'}
             </button>
           </div>
         </aside>
-        <section
-          className={`${panel === 'chat' ? 'flex' : 'hidden'} min-h-0 flex-1 flex-col border-b border-border lg:flex lg:border-b-0 lg:border-r`}
-        >
+        <section className={`${panel === 'chat' ? 'flex' : 'hidden'} min-h-0 flex-1 flex-col border-b border-border lg:flex lg:border-b-0 lg:border-r`}>
           <div className="flex items-center justify-between border-b border-border px-4 py-3 sm:px-6">
             <div>
-              <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-                Build mode
-              </p>
+              <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">Stack</p>
               <select
                 value={activeMode}
-                onChange={(event) => setActiveMode(event.target.value)}
+                onChange={(event) => {
+                  const next = event.target.value
+                  setActiveMode(next)
+                  const stack = modes.find((m) => m.title === next)
+                  if (stack?.stackId) {
+                    setWorkspace((current) => ({
+                      ...current,
+                      files: filesForStack(stack.stackId),
+                      messages: [
+                        ...current.messages,
+                        {
+                          id: makeId(),
+                          role: 'agent',
+                          text: `Stack set to ${next}. Workspace seeded with ${next} starter files.`,
+                        },
+                      ],
+                    }))
+                  }
+                }}
                 className="mt-1 bg-transparent text-sm outline-none"
               >
                 {modes.map((mode) => (
@@ -547,10 +562,7 @@ function Studio({
                 ))}
               </select>
             </div>
-            <button
-              onClick={publishProject}
-              className="touch-target rounded-lg border border-border px-3 text-xs text-muted-foreground hover:bg-secondary"
-            >
+            <button onClick={publishProject} className="touch-target rounded-lg border border-border px-3 text-xs text-muted-foreground hover:bg-secondary">
               <Upload className="mr-2 inline size-4" />
               Publish
             </button>
@@ -562,9 +574,7 @@ function Studio({
               </div>
               <div>
                 <p className="text-sm font-medium">Nexora agent</p>
-                <p className="text-xs text-muted-foreground">
-                  {busy ? 'Planning, writing, testing\u2026' : 'Planning, writing, testing'}
-                </p>
+                <p className="text-xs text-muted-foreground">{busy ? 'Planning, writing, testing…' : `${activeMode} · ready`}</p>
               </div>
               <Check className="ml-auto size-4 text-emerald-400" />
             </div>
@@ -589,44 +599,28 @@ function Studio({
                 value={message}
                 onChange={(event) => setMessage(event.target.value)}
                 onKeyDown={(event) => {
-                  if (
-                    event.key === 'Enter' &&
-                    !event.shiftKey &&
-                    !event.nativeEvent.isComposing &&
-                    event.keyCode !== 229
-                  ) {
+                  if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing && event.keyCode !== 229) {
                     event.preventDefault()
                     submit()
                   }
                 }}
                 rows={2}
-                placeholder="Describe what you want to build\u2026"
+                placeholder={`Describe a ${activeMode} project to build…`}
                 disabled={busy}
                 className="min-h-14 w-full resize-none bg-transparent px-3 py-2 text-base outline-none placeholder:text-muted-foreground disabled:opacity-60"
               />
               <div className="flex items-center justify-between px-2 pb-1">
-                <span className="font-mono text-[10px] text-muted-foreground">
-                  Shift + Enter for a new line
-                </span>
-                <button
-                  onClick={submit}
-                  disabled={busy || !message.trim()}
-                  className="touch-target flex size-11 items-center justify-center rounded-xl bg-foreground text-background transition hover:opacity-80 disabled:opacity-40"
-                  aria-label="Send message"
-                >
+                <span className="font-mono text-[10px] text-muted-foreground">Shift + Enter for a new line</span>
+                <button onClick={submit} disabled={busy || !message.trim()} className="touch-target flex size-11 items-center justify-center rounded-xl bg-foreground text-background transition hover:opacity-80 disabled:opacity-40" aria-label="Send message">
                   <Send size={17} />
                 </button>
               </div>
             </div>
           </div>
         </section>
-        <aside
-          className={`${panel === 'activity' || panel === 'more' ? 'flex' : 'hidden'} w-full shrink-0 flex-col p-5 xl:flex xl:w-80`}
-        >
+        <aside className={`${panel === 'activity' || panel === 'more' ? 'flex' : 'hidden'} w-full shrink-0 flex-col p-5 xl:flex xl:w-80`}>
           <div className="flex items-center justify-between">
-            <p className="font-mono text-xs uppercase tracking-widest text-muted-foreground">
-              Live activity
-            </p>
+            <p className="font-mono text-xs uppercase tracking-widest text-muted-foreground">Live activity</p>
             <span className="size-2 rounded-full bg-emerald-400" />
           </div>
           <div className="mt-6 space-y-5">
@@ -637,13 +631,8 @@ function Studio({
           <div className="mt-10 space-y-4">
             <div className="rounded-2xl border border-border bg-card p-4">
               <p className="text-sm font-medium">Bring your repo</p>
-              <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                Connect GitHub to import context or export this build into a new public repository.
-              </p>
-              <button
-                onClick={onGithub}
-                className="mt-4 flex w-full items-center justify-center rounded-xl bg-foreground py-3 text-sm text-background"
-              >
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">Connect GitHub to import context or export this build into a new public repository.</p>
+              <button onClick={onGithub} className="mt-4 flex w-full items-center justify-center rounded-xl bg-foreground py-3 text-sm text-background">
                 <Upload className="mr-2 size-4" />
                 {githubConnected ? 'Repository ready' : 'Connect GitHub'}
               </button>
@@ -651,23 +640,13 @@ function Studio({
             <div className="rounded-2xl border border-border bg-card p-4">
               <p className="text-sm font-medium">Ship on Netlify</p>
               <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                Deploy this workspace to team <span className="font-mono text-xs">agricoin8-debug</span>. Manage
-                extensions in the Netlify dashboard.
+                Deploy this workspace to team <span className="font-mono text-xs">agricoin8-debug</span>.
               </p>
-              <button
-                onClick={deployToNetlify}
-                disabled={deploying}
-                className="mt-4 flex w-full items-center justify-center rounded-xl border border-border py-3 text-sm hover:bg-secondary disabled:opacity-50"
-              >
+              <button onClick={deployToNetlify} disabled={deploying} className="mt-4 flex w-full items-center justify-center rounded-xl border border-border py-3 text-sm hover:bg-secondary disabled:opacity-50">
                 <Globe className="mr-2 size-4" />
-                {deploying ? 'Deploying\u2026' : netlifyConfigured ? 'Deploy to Netlify' : 'Set NETLIFY_AUTH_TOKEN'}
+                {deploying ? 'Deploying…' : netlifyConfigured ? 'Deploy to Netlify' : 'Set NETLIFY_AUTH_TOKEN'}
               </button>
-              <a
-                href="https://app.netlify.com/teams/agricoin8-debug/extensions"
-                target="_blank"
-                rel="noreferrer"
-                className="mt-3 block text-center text-xs text-muted-foreground underline"
-              >
+              <a href="https://app.netlify.com/teams/agricoin8-debug/extensions" target="_blank" rel="noreferrer" className="mt-3 block text-center text-xs text-muted-foreground underline">
                 Open team extensions
               </a>
             </div>
@@ -676,24 +655,9 @@ function Studio({
       </div>
       <nav className="grid h-16 shrink-0 grid-cols-4 border-t border-border bg-background lg:hidden">
         <NavItem active={panel === 'chat'} onClick={() => setPanel('chat')} icon={<Sparkles />} label="Build" />
-        <NavItem
-          active={panel === 'files'}
-          onClick={() => setPanel('files')}
-          icon={<FolderGit2 />}
-          label="Files"
-        />
-        <NavItem
-          active={panel === 'activity'}
-          onClick={() => setPanel('activity')}
-          icon={<CircleDot />}
-          label="Activity"
-        />
-        <NavItem
-          active={panel === 'more'}
-          onClick={() => setPanel('more')}
-          icon={<MoreHorizontal />}
-          label="More"
-        />
+        <NavItem active={panel === 'files'} onClick={() => setPanel('files')} icon={<FolderGit2 />} label="Files" />
+        <NavItem active={panel === 'activity'} onClick={() => setPanel('activity')} icon={<CircleDot />} label="Activity" />
+        <NavItem active={panel === 'more'} onClick={() => setPanel('more')} icon={<MoreHorizontal />} label="More" />
       </nav>
     </div>
   )
@@ -702,11 +666,7 @@ function Studio({
 function Activity({ item }: { item: ActivityItem }) {
   return (
     <div className="flex gap-3">
-      <div
-        className={`flex size-8 shrink-0 items-center justify-center rounded-lg ${
-          item.state === 'done' ? 'bg-secondary text-foreground' : 'border border-border text-muted-foreground'
-        }`}
-      >
+      <div className={`flex size-8 shrink-0 items-center justify-center rounded-lg ${item.state === 'done' ? 'bg-secondary text-foreground' : 'border border-border text-muted-foreground'}`}>
         <CircleDot className={`size-4 ${item.state === 'active' ? 'animate-pulse text-emerald-400' : ''}`} />
       </div>
       <div>
@@ -717,24 +677,9 @@ function Activity({ item }: { item: ActivityItem }) {
   )
 }
 
-function NavItem({
-  active,
-  onClick,
-  icon,
-  label,
-}: {
-  active: boolean
-  onClick: () => void
-  icon: React.ReactNode
-  label: string
-}) {
+function NavItem({ active, onClick, icon, label }: { active: boolean; onClick: () => void; icon: React.ReactNode; label: string }) {
   return (
-    <button
-      onClick={onClick}
-      className={`flex flex-col items-center justify-center gap-1 text-[10px] ${
-        active ? 'text-foreground' : 'text-muted-foreground'
-      }`}
-    >
+    <button onClick={onClick} className={`flex flex-col items-center justify-center gap-1 text-[10px] ${active ? 'text-foreground' : 'text-muted-foreground'}`}>
       {icon}
       <span>{label}</span>
     </button>
