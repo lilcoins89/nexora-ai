@@ -44,7 +44,7 @@ const modes = [
   { title: 'Vue', detail: 'SFCs, Composition API, Vite + Vue', icon: Bot, stackId: 'vue' as StackId },
 ]
 
-type Panel = 'chat' | 'files' | 'activity' | 'more'
+type Panel = 'chat' | 'files' | 'activity' | 'runs' | 'more'
 
 export default function Page() {
   const [studioOpen, setStudioOpen] = useState(false)
@@ -495,7 +495,7 @@ function Studio({
         </div>
         <div className="flex items-center gap-2">
           <span className="hidden items-center gap-2 rounded-full bg-secondary px-3 py-2 font-mono text-xs text-muted-foreground sm:flex">
-            <CircleDot className="size-3 text-emerald-400" />
+            <CircleDot className="size-3 text-primary" />
             {busy ? 'Agent working' : 'Agent online'}
           </span>
           <span className="flex items-center gap-2 rounded-full border border-border bg-card px-2.5 py-2 font-mono text-[10px] uppercase tracking-wider text-muted-foreground sm:px-3">
@@ -663,6 +663,26 @@ function Studio({
             </div>
           </div>
         </section>
+        <aside className={`${panel === 'runs' ? 'flex' : 'hidden'} w-full shrink-0 flex-col p-5 xl:flex xl:w-80`}>
+          <div className="flex items-center justify-between">
+            <p className="font-mono text-xs uppercase tracking-widest text-muted-foreground">Run history</p>
+            <span className="rounded-full bg-accent-muted px-2 py-1 font-mono text-[10px] text-primary">{workspace.runs.length} runs</span>
+          </div>
+          <div className="mt-6 flex flex-col gap-3 overflow-y-auto">
+            {workspace.runs.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-border bg-card p-5 text-sm leading-6 text-muted-foreground">Your agent runs will appear here with validation and changed-file summaries.</div>
+            ) : workspace.runs.slice().reverse().map((run) => (
+              <div key={run.id} className="rounded-2xl border border-border bg-card p-4">
+                <div className="flex items-center gap-2">
+                  <span className={`size-2 rounded-full ${run.status === 'completed' ? 'bg-primary' : run.status === 'failed' ? 'bg-destructive' : 'bg-muted-foreground'}`} />
+                  <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">{run.status}</span>
+                </div>
+                <p className="mt-3 line-clamp-3 text-sm leading-6 text-foreground">{run.prompt}</p>
+                <p className="mt-3 font-mono text-[10px] text-muted-foreground">{run.changedFiles.length} files changed</p>
+              </div>
+            ))}
+          </div>
+        </aside>
         <aside className={`${panel === 'activity' || panel === 'more' ? 'flex' : 'hidden'} w-full shrink-0 flex-col p-5 xl:flex xl:w-80`}>
           <div className="flex items-center justify-between">
             <p className="font-mono text-xs uppercase tracking-widest text-muted-foreground">Live activity</p>
@@ -677,7 +697,7 @@ function Studio({
             <div className="rounded-2xl border border-border bg-card p-4">
               <p className="text-sm font-medium">Bring your repo</p>
               <p className="mt-2 text-sm leading-6 text-muted-foreground">Connect GitHub to import context or export this build into a new public repository.</p>
-              <button onClick={onGithub} className="mt-4 flex w-full items-center justify-center rounded-xl bg-foreground py-3 text-sm text-background">
+              <button onClick={onGithub} className="mt-4 flex w-full items-center justify-center rounded-xl bg-primary py-3 text-sm text-primary-foreground transition hover:brightness-110">
                 <Upload className="mr-2 size-4" />
                 {githubConnected ? 'Repository ready' : 'Connect GitHub'}
               </button>
@@ -698,10 +718,11 @@ function Studio({
           </div>
         </aside>
       </div>
-      <nav className="grid h-16 shrink-0 grid-cols-4 border-t border-border bg-background lg:hidden">
+      <nav className="grid h-16 shrink-0 grid-cols-5 border-t border-border bg-background lg:hidden">
         <NavItem active={panel === 'chat'} onClick={() => setPanel('chat')} icon={<Sparkles />} label="Build" />
         <NavItem active={panel === 'files'} onClick={() => setPanel('files')} icon={<FolderGit2 />} label="Files" />
         <NavItem active={panel === 'activity'} onClick={() => setPanel('activity')} icon={<CircleDot />} label="Activity" />
+        <NavItem active={panel === 'runs'} onClick={() => setPanel('runs')} icon={<TerminalSquare />} label="Runs" />
         <NavItem active={panel === 'more'} onClick={() => setPanel('more')} icon={<MoreHorizontal />} label="More" />
       </nav>
     </div>
