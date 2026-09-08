@@ -53,6 +53,7 @@ export default function Page() {
   const [netlifyConfigured, setNetlifyConfigured] = useState(false)
   const [workspace, setWorkspace] = useState(() => createWorkspace())
   const [busy, setBusy] = useState(false)
+  const [syncState, setSyncState] = useState<'local' | 'syncing' | 'synced' | 'error'>('local')
 
   useEffect(() => {
     const saved = window.sessionStorage.getItem(workspaceStorageKey())
@@ -71,6 +72,26 @@ export default function Page() {
 
   useEffect(() => {
     window.sessionStorage.setItem(workspaceStorageKey(), JSON.stringify(workspace))
+    const timer = window.setTimeout(async () => {
+      setSyncState('syncing')
+      try {
+        const response = await fetch('/api/workspace', {
+          method: 'PUT',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            id: workspace.project.id,
+            name: workspace.project.name,
+            mode: workspace.project.mode,
+            selectedFile: workspace.project.selectedFile,
+            files: Object.fromEntries(workspace.files.map((file) => [file.path, file.content ?? ''])),
+          }),
+        })
+        setSyncState(response.ok ? 'synced' : response.status === 401 ? 'local' : 'error')
+      } catch {
+        setSyncState('local')
+      }
+    }, 900)
+    return () => window.clearTimeout(timer)
   }, [workspace])
 
   async function sendMessage(text: string) {
@@ -230,6 +251,7 @@ export default function Page() {
           onSend={sendMessage}
           busy={busy}
           onClose={() => setStudioOpen(false)}
+          syncState={syncState}
           githubConnected={githubConnected}
           onGithub={connectGithub}
           netlifyConfigured={netlifyConfigured}
@@ -242,7 +264,7 @@ export default function Page() {
 function Brand({ compact = false }: { compact?: boolean }) {
   return (
     <div className={compact ? 'flex items-center gap-2' : 'flex items-center gap-4'}>
-      <div className="flex size-10 items-center justify-center rounded-xl bg-foreground text-xl font-semibold tracking-tight text-background">
+      <div className="flex size-10 items-center justify-center rounded-xl bg-primary text-xl font-semibold tracking-tight text-primary-foreground">
         N
       </div>
       <span className="font-mono text-sm font-medium tracking-[0.38em] text-foreground">NEXORA</span>
@@ -307,7 +329,7 @@ function Landing({
       <div className="mt-8 grid gap-3 sm:grid-cols-2">
         <button
           onClick={onOpen}
-          className="touch-target flex min-h-16 items-center justify-center rounded-full bg-foreground px-6 text-lg text-background transition hover:opacity-90"
+          className="touch-target flex min-h-16 items-center justify-center rounded-full bg-primary px-6 text-lg text-primary-foreground transition hover:brightness-110"
         >
           <Sparkles className="mr-3 size-5" />
           Open studio
@@ -335,6 +357,7 @@ function Studio({
   onSend,
   busy,
   onClose,
+  syncState,
   githubConnected,
   onGithub,
   netlifyConfigured,
@@ -346,6 +369,7 @@ function Studio({
   onSend: (text: string) => void
   busy: boolean
   onClose: () => void
+  syncState: 'local' | 'syncing' | 'synced' | 'error'
   githubConnected: boolean
   onGithub: () => void
   netlifyConfigured: boolean
@@ -474,6 +498,11 @@ function Studio({
             <CircleDot className="size-3 text-emerald-400" />
             {busy ? 'Agent working' : 'Agent online'}
           </span>
+          <span className="flex items-center gap-2 rounded-full border border-border bg-card px-2.5 py-2 font-mono text-[10px] uppercase tracking-wider text-muted-foreground sm:px-3">
+            <span className={`size-1.5 rounded-full ${syncState === 'synced' ? 'bg-primary' : syncState === 'error' ? 'bg-destructive' : 'bg-muted-foreground'}`} />
+            <span className="hidden sm:inline">{syncState === 'syncing' ? 'Syncing' : syncState === 'synced' ? 'Neon synced' : syncState === 'error' ? 'Sync error' : 'Local mode'}</span>
+            <span className="sm:hidden">{syncState === 'synced' ? 'Synced' : syncState === 'syncing' ? 'Sync' : 'Local'}</span>
+          </span>
           <button
             onClick={onClose}
             className="touch-target rounded-full p-3 text-muted-foreground hover:bg-secondary"
@@ -585,14 +614,14 @@ function Studio({
           </div>
           <div className="flex flex-1 flex-col justify-end overflow-y-auto p-4 sm:p-7">
             <div className="mb-6 flex items-center gap-3 rounded-2xl border border-border bg-card p-4">
-              <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-foreground text-background">
+              <div className="agent-live flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground">
                 <Bot size={19} />
               </div>
               <div>
                 <p className="text-sm font-medium">Nexora agent</p>
                 <p className="text-xs text-muted-foreground">{busy ? 'Planning, writing, testing…' : `${activeMode} · ready`}</p>
               </div>
-              <Check className="ml-auto size-4 text-emerald-400" />
+              <Check className="ml-auto size-4 text-primary" />
             </div>
             <div className="space-y-5">
               {workspace.messages.map((item) => (
@@ -627,7 +656,7 @@ function Studio({
               />
               <div className="flex items-center justify-between px-2 pb-1">
                 <span className="font-mono text-[10px] text-muted-foreground">Shift + Enter for a new line</span>
-                <button onClick={submit} disabled={busy || !message.trim()} className="touch-target flex size-11 items-center justify-center rounded-xl bg-foreground text-background transition hover:opacity-80 disabled:opacity-40" aria-label="Send message">
+                <button onClick={submit} disabled={busy || !message.trim()} className="touch-target flex size-11 items-center justify-center rounded-xl bg-primary text-primary-foreground transition hover:brightness-110 disabled:opacity-40" aria-label="Send message">
                   <Send size={17} />
                 </button>
               </div>
@@ -637,7 +666,7 @@ function Studio({
         <aside className={`${panel === 'activity' || panel === 'more' ? 'flex' : 'hidden'} w-full shrink-0 flex-col p-5 xl:flex xl:w-80`}>
           <div className="flex items-center justify-between">
             <p className="font-mono text-xs uppercase tracking-widest text-muted-foreground">Live activity</p>
-            <span className="size-2 rounded-full bg-emerald-400" />
+            <span className="size-2 rounded-full bg-primary" />
           </div>
           <div className="mt-6 space-y-5">
             {workspace.activity.map((item) => (
@@ -683,7 +712,7 @@ function Activity({ item }: { item: ActivityItem }) {
   return (
     <div className="flex gap-3">
       <div className={`flex size-8 shrink-0 items-center justify-center rounded-lg ${item.state === 'done' ? 'bg-secondary text-foreground' : 'border border-border text-muted-foreground'}`}>
-        <CircleDot className={`size-4 ${item.state === 'active' ? 'animate-pulse text-emerald-400' : ''}`} />
+        <CircleDot className={`size-4 ${item.state === 'active' ? 'animate-pulse text-primary' : ''}`} />
       </div>
       <div>
         <p className="text-sm">{item.title}</p>
