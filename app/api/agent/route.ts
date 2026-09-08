@@ -68,6 +68,8 @@ export async function POST(request: Request) {
       events: [...events, ...result.events],
       steps: result.steps,
       model: result.model,
+      brain: result.brain,
+      limits: { maxSteps: result.maxSteps, maxRepairs: result.maxRepairs },
       stack: stack?.id ?? null,
       validation,
     })
